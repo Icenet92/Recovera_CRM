@@ -231,6 +231,14 @@
 - No dedicated "Recovery Assignments" list route in the sidebar yet; a batch is reachable via CasesScreen → Create Batch → detail. A full officer/manager batch list is a small follow-up.
 - `target_amount` auto-suggest uses `CaseModel.outstandingAmount` (`= totalClaim` until Phase 5 introduces verified payments / adjustments).
 
+### Post-completion fix — runtime "Exception: case not found" on case tap
+**Symptom:** after the Scaffold-wrap fix (`b139835`), tapping a case from a **Client's Cases tab** (`ClientDetailScreen._openCase` → `MaterialPageRoute` to `CaseDetailScreen`) crashed with `Exception: case not found` instead of the earlier "No Material widget found".
+**Root cause:** `CaseDetailScreen` resolved its `CaseModel` via `recProv.cases.firstWhere(e.id == widget.caseId, orElse: () => throw ...)` against the **global `cases` list**. That list is only populated by `CasesScreen.loadCases()`. The client-detail entry path never calls `loadCases()`, so on first build `recProv.cases` was empty → the `orElse` threw. (The global Cases path happened to work because `CasesScreen` pre-loads the list.) `loadCaseDetails(caseId)` only loaded assignments/status/supporting-employees — never the case itself.
+**Fix:**
+- `RecoveryProvider`: added `CaseModel? _currentCase` + `currentCase` getter, `bool _caseDetailsLoaded` + `caseDetailsLoaded` getter. `loadCaseDetails(caseId)` now also does `_currentCase = await _caseRepo.getById(caseId)` (single-case fetch — works on every entry path) and sets `caseDetailsLoaded = true` in `finally`.
+- `CaseDetailScreen.build`: reads `recProv.currentCase` and returns a spinner while loading / a "Case not found" placeholder once loaded-without-resolving — **never throws**. The org/debtor lookups switched to `firstOrNull` (best-effort) so a not-yet-cached organization/debtor degrades to a placeholder instead of throwing, matching the existing `client_detail_screen.dart` pattern.
+**Verified:** `dart analyze lib test` → 9 pre-existing infos, 0 new (0 in `recovery_provider.dart` / `case_detail_screen.dart`); `flutter test --timeout 180s` → `00:15 +7: All tests passed!` (EXITCODE 0).
+
 ---
 
 ## PHASE 4 — Tasks, Activities, Calendar ⬜

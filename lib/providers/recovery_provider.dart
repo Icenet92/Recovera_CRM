@@ -25,6 +25,8 @@ class RecoveryProvider extends ChangeNotifier {
   List<DebtorCaseStats> _debtorCaseStats = [];
   
   // Detail views
+  CaseModel? _currentCase;
+  bool _caseDetailsLoaded = false;
   List<CaseAssignmentModel> _assignments = [];
   List<CaseStatusHistoryModel> _statusHistory = [];
   List<CaseSupportingEmployeeModel> _supportingEmployees = [];
@@ -55,6 +57,8 @@ class RecoveryProvider extends ChangeNotifier {
   List<CaseAssignmentModel> get assignments => _assignments;
   List<CaseStatusHistoryModel> get statusHistory => _statusHistory;
   List<CaseSupportingEmployeeModel> get supportingEmployees => _supportingEmployees;
+  CaseModel? get currentCase => _currentCase;
+  bool get caseDetailsLoaded => _caseDetailsLoaded;
 
   // Phase 3B getters
   List<RecoveryAssignmentModel> get recoveryAssignments => _recoveryAssignments;
@@ -271,15 +275,21 @@ class RecoveryProvider extends ChangeNotifier {
   Future<void> loadCaseDetails(String caseId) async {
     _isLoading = true;
     _error = null;
+    _caseDetailsLoaded = false;
     notifyListeners();
 
     try {
+      // Fetch the case itself by id so the detail view works even when the
+      // global `cases` list hasn't been populated (e.g. opened from a client's
+      // Cases tab via MaterialPageRoute, where loadCases() wasn't called).
+      _currentCase = await _caseRepo.getById(caseId);
       _assignments = await _caseRepo.getAssignments(caseId);
       _statusHistory = await _caseRepo.getStatusHistory(caseId);
       _supportingEmployees = await _caseRepo.getSupportingEmployees(caseId);
     } catch (e) {
       _error = e.toString();
     } finally {
+      _caseDetailsLoaded = true;
       _isLoading = false;
       notifyListeners();
     }

@@ -63,25 +63,36 @@ class _CaseDetailScreenState extends State<CaseDetailScreen>
     final recProv = context.watch<RecoveryProvider>();
     final crmProv = context.watch<CrmProvider>();
 
-    // Find case
-    final cModel = recProv.cases.firstWhere(
-      (e) => e.id == widget.caseId,
-      orElse: () => throw Exception('Case not found'),
-    );
-    final org = crmProv.organizations.firstWhere(
-      (e) => e.id == cModel.organizationId,
-      orElse: () => throw Exception('Org not found'),
-    );
+    // The case is resolved by id via loadCaseDetails (initState) -> works
+    // whether the global cases list was pre-loaded (Cases screen) or not
+    // (opened from a client's Cases tab via MaterialPageRoute). While it loads
+    // we show a spinner instead of throwing 'Case not found'.
+    final cModel = recProv.currentCase;
+    if (cModel == null) {
+      // loadCaseDetails (initState) fetches the case by id. Show a spinner while
+      // it loads; only show 'Case not found' once loading has finished without
+      // resolving — covers the ClientDetail MaterialPageRoute path where the
+      // cases list isn't pre-loaded.
+      return Scaffold(
+        body: Center(
+          child: recProv.caseDetailsLoaded
+              ? const Text(
+                  'Case not found.',
+                  style: TextStyle(color: AppColors.textMuted),
+                )
+              : const CircularProgressIndicator(),
+        ),
+      );
+    }
 
-    // For debtor, usually we'd have it in the provider. If it's not loaded, this might throw.
-    // In a real app we'd fetch it specifically if not in list.
-    final debtorList = recProv.debtors;
-    final debtor = debtorList.isNotEmpty
-        ? debtorList.firstWhere(
-            (e) => e.id == cModel.debtorId,
-            orElse: () => throw Exception('Debtor not found'),
-          )
-        : null;
+    // Organizations/debtors may not be cached yet on a given entry path;
+    // resolve best-effort and degrade to a placeholder instead of throwing.
+    final org = crmProv.organizations
+        .where((e) => e.id == cModel.organizationId)
+        .firstOrNull;
+    final debtor = recProv.debtors
+        .where((e) => e.id == cModel.debtorId)
+        .firstOrNull;
 
     final isClosed = cModel.status.toLowerCase().contains('closed');
 
@@ -124,7 +135,7 @@ class _CaseDetailScreenState extends State<CaseDetailScreen>
                   const Text('•', style: TextStyle(color: AppColors.textMuted)),
                   const SizedBox(width: 8),
                   Text(
-                    org.companyName,
+                    org?.companyName ?? '—',
                     style: const TextStyle(
                       fontSize: 13,
                       color: AppColors.textMuted,
