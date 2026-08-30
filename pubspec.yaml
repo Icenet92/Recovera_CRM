@@ -1,0 +1,37 @@
+name: recovera_crm
+description: "RECOVERA — Client, Case & Recovery Management Platform"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.12.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  provider: ^6.1.5
+  sqflite_common_ffi: ^2.4.2+1
+  uuid: ^4.6.0
+  path: ^1.9.1
+  path_provider: ^2.1.6
+  shelf: ^1.4.2
+  shelf_router: ^1.1.4
+  bonsoir: ^7.0.0
+  http: ^1.6.0
+  bitsdojo_window: ^0.1.6
+  google_fonts: ^8.1.0
+  pointycastle: ^4.0.0
+  crypto: ^3.0.7
+  shared_preferences: ^2.5.5
+  intl: ^0.20.3
+  local_notifier: ^0.1.6
+  excel: ^4.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

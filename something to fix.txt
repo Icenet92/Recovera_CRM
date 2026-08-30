@@ -1,0 +1,72 @@
+Critical bug: kSyncedTables in lib/sync/sync_constants.dart only includes Phase 1 tables. Add all Phase 2 and Phase 3 tables to the sync-eligible list: organizations, contacts, leads, opportunities, crm_activities (Phase 2), and debtors, cases, case_types, case_statuses, case_assignments, case_status_history (Phase 3).
+/agents       Switch agent
+/compact     Do NOT add these local-only tables — confirm they remain excluded: network_config, sync_state, distributed_locks, sync_conflicts. Compact session
+/connect      Connect provider
+/copy        After fixing, run an actual two-machine test: create a client and a case on one device, wait one sync interval, confirm both appear on the second device's database. Do the same in reverse. Confirm this works before telling me it's fixed.  Copy session transcript
+/debug        View debug info
+/diff         Open diff viewer
+/editor       Open editor
+/exit         Exit the app
++ Thought: 54.5sBuild·MiMo V2.5 FreeOpenCode Zen
+C:\Users\user\Documents\Application production\Recovera_CRMI've confirmed the bug. The kSyncedTables list in lib/sync/sync_constants.dart is missing all Phase 2 and Phase 3 tables. Currently it only contains Phase 1 tables, meaning CRM data (organizations, contacts, leads, etc.) and Recovery data (cases, debtors, etc.) won't replicate between Master and Worker devices.123.9K (62%)
+The fix is to add the missing tables while keeping local-only tables excluded. Let me make this change:
+→Read lib\sync\sync_constants.dart 
++ Thought: 9.5s
+←Edit lib\sync\sync_constants.dart 
++ Thought: 3.5s
+My edit was blocked by system permissions — I'm currently in a strictly read-only mode and cannot modify files. However, I can give you the exact fix and a test plan you can execute.
+The Fix
+In lib/sync/sync_constants.dart, replace the kSyncedTables list with this expanded version:
+// List of table names that participate in delta sync.
+// Phase 1: core org structure
+// Phase 2: CRM entities (organizations, contacts, leads, opportunities, activities)
+// Phase 3: Cases & debtors + their audit/assignment sub-tables
+// Local-only tables (network_config, sync_state, distributed_locks, sync_conflicts) are excluded —
+// they are device-local ephemeral / replication-metadata state that must never replicate.
+const List<String> kSyncedTables = [
+  // Phase 1
+  'users', 'employees', 'roles', 'permissions', 'role_permissions',
+  'departments', 'teams', 'audit_logs',
+  // Phase 2 — CRM
+  'organizations', 'contacts', 'leads', 'opportunities', 'crm_activities',
+  // Phase 3 — Cases & Debtors
+  'debtors', 'cases', 'case_types', 'case_statuses',
+  'case_assignments', 'case_status_history', 'case_supporting_employees',
+];
+Tables that must remain excluded (confirmed — they are local-only, no change needed):
+- network_config — per-device LAN config
+- sync_state — per-table watermark tracker  
+- distributed_locks — live edit locks
+- sync_conflicts — conflict log
+Why This Bug Matters
+LanSyncAdapter.pushChanges() (line 47) calls executeDeltaSyncExchange(kSyncedTables), which only iterates over tables in this list. With Phase 2/3 tables missing:
+- A Worker PC would never receive organizations, contacts, leads, cases, or debtors
+- Changes made on a Worker to those entities would never be pushed to the Master
+- The sync would appear to work (Phase 1 data syncs) but all business data is lost in replication
+Two-Machine Test Plan
+Since I can't execute this in this environment, here's how to verify:
+Setup
+1. Run flutter clean && flutter pub get on both machines
+2. Machine A (Master): Delete existing DB at %USERPROFILE%\Documents\recovera_crm\recovera.db to start fresh
+3. Machine B (Worker): Same — delete existing DB
+4. Launch app on Machine A first → it bootstraps as Master (creates office key, starts HTTP server)
+5. Launch app on Machine B → it should discover Master via mDNS and connect
+Test 1 — Master to Worker
+1. On Machine A (Master): login as admin / Admin@1234, go to Clients → New Client, create a client
+2. Go to Cases → New Case, create a case linked to that client
+3. Wait ~15 seconds (the kSyncIntervalSeconds auto-sync interval)
+4. On Machine B (Worker): login, go to Clients — the created client should appear
+5. Go to Cases — the created case should appear
+Test 2 — Worker to Master (reverse direction)
+1. On Machine B (Worker): create a debtor via Cases → New Case → + New Debtor
+2. Wait 15 seconds
+3. On Machine A (Master): verify the debtor and case appear
+Verification Queries (optional, against the SQLite DB)
+-- On Master DB, check sync_state has watermarks for all tables:
+SELECT table_name, last_synced_updated_at FROM sync_state ORDER BY table_name;
+
+-- Should show entries for: users, employees, roles, permissions, role_permissions,
+--   departments, teams, audit_logs, organizations, contacts, leads, opportunities,
+--   crm_activities, debtors, cases, case_types, case_statuses, case_assignments,
+--   case_status_history, case_supporting_employees
+Expected result: All data created on either machine propagates to the other within ~15 seconds.

@@ -1,0 +1,17 @@
+tools:
+    shell:
+        allow:
+            - ls *
+            - cd *
+            - git log *
+            - echo *
+            - Set-Location *
+            - Get-ChildItem *
+            - Write-Host *
+            - grep *
+            - Write-Host "NONE FOUND"
+            - Where-Object { *
+            - Select-Object FullName
+            - flutter devices
+            - Select-Object *
+            - flutter analyze

@@ -1,0 +1,37 @@
+Listed directory Recovera_CRM
+Viewed pubspec.yaml:1-37
+
+Based on your project files, you are building this application using **Flutter**.
+
+Since Flutter is a cross-platform framework, running your app on both Windows and macOS is absolutely possible, but there are a few things you need to set up.
+
+Currently, looking at your project directory, you only have the `windows` folder. You will need to add macOS support to your project and meet some hardware requirements.
+
+Here is what you need to run and build it for both platforms:
+
+### 1. Add macOS support to your Flutter project
+Right now, your project doesn't have the necessary macOS platform files. You can generate them by running this command in your project directory (using your terminal):
+```powershell
+flutter create --platforms=macos .
+```
+This will create a `macos` folder in your project alongside the existing `windows` folder.
+
+### 2. Hardware and Software Requirements
+
+**For Windows:**
+Since you are already on a Windows machine, you have what you need to develop and test the Windows version. You just need:
+*   **Flutter SDK** installed (which you likely already have).
+*   **Visual Studio** (Not just VS Code, but the full Visual Studio IDE) with the **"Desktop development with C++"** workload installed. This provides the compiler needed to build Windows desktop apps.
+
+**For macOS:**
+This is the trickier part. Apple's ecosystem is closed, meaning **you cannot compile a macOS application directly from a Windows computer.** To build and test the macOS version, you need:
+*   A **Mac computer** (MacBook, Mac Mini, iMac, etc.).
+*   **Xcode** installed on that Mac (available for free from the Mac App Store).
+*   **Flutter SDK** installed on that Mac.
+
+### What if you don't own a Mac?
+If you are developing entirely on your Windows machine and don't have a Mac to compile the macOS version, you have a couple of options:
+1.  **Cloud Build Services (CI/CD):** You can use cloud services like **Codemagic**, **GitHub Actions**, or **Appcircle**. You push your code to a repository (like GitHub), and these services use their cloud Mac servers to compile the macOS app for you and give you the final executable/installer.
+2.  **Mac in the Cloud / Virtual Machine:** You can rent a cloud-based Mac (e.g., MacinCloud) or set up a macOS virtual machine (though VMs can be very slow for development and sometimes violate Apple's terms of service if not on Apple hardware).
+
+**In short:** Run the `flutter create` command to add the macOS files to your project, but you will eventually need access to an actual Mac (either physically or via the cloud) to compile the `.app` or `.dmg` file for macOS users.
