@@ -17,6 +17,7 @@ import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:recovera_crm/database/database_helper.dart';
+import 'package:recovera_crm/models/auth_session.dart';
 import 'package:recovera_crm/providers/auth_provider.dart';
 import 'package:recovera_crm/providers/crm_provider.dart';
 import 'package:recovera_crm/providers/recovery_provider.dart';
@@ -30,10 +31,12 @@ import 'package:recovera_crm/repositories/debtor_repository.dart';
 import 'package:recovera_crm/repositories/lead_repository.dart';
 import 'package:recovera_crm/repositories/organization_repository.dart';
 import 'package:recovera_crm/repositories/user_repository.dart';
+import 'package:recovera_crm/screens/recovery/batches_screen.dart';
 import 'package:recovera_crm/screens/recovery/case_form_dialog.dart';
 import 'package:recovera_crm/screens/recovery/debtor_detail_screen.dart';
 import 'package:recovera_crm/screens/recovery/debtor_form_dialog.dart';
 import 'package:recovera_crm/screens/recovery/debtors_screen.dart';
+import 'package:recovera_crm/screens/recovery/recovery_assignment_detail_screen.dart';
 import 'package:recovera_crm/screens/recovery/recovery_assignment_form.dart';
 
 void main() {
@@ -58,6 +61,7 @@ void main() {
   late CaseRepository caseRepo;
   late RecoveryAssignmentRepository recoveryAssignmentRepo;
   late AuthRepository authRepo;
+  late AuthSession session;
 
   setUp(() async {
     // Initialize the test binding NOW so it installs its (fatal) FlutterError
@@ -97,7 +101,7 @@ void main() {
         recoveryAssignmentRepo,
       ],
     );
-    final session = await authRepo.login('admin', 'Admin@1234');
+    session = await authRepo.login('admin', 'Admin@1234');
     expect(session.username, 'admin');
   });
 
@@ -353,6 +357,115 @@ void main() {
       expect(find.text('Select at least one case'), findsOneWidget);
       expect(find.text('Enter a target amount'), findsOneWidget);
       expect(find.text('Select a deadline'), findsOneWidget);
+    },
+  );
+
+  /// Mirrors AppShell's `_selectedAssignmentId` detail routing for the Batches
+  /// screen: list -> (tap a row) -> batch detail.
+  Widget batchesHost() {
+    String? selectedBatchId;
+    return StatefulBuilder(
+      builder: (BuildContext context, StateSetter setState) {
+        return Scaffold(
+          body: selectedBatchId == null
+              ? BatchesScreen(
+                  onBatchSelected: (id) =>
+                      setState(() => selectedBatchId = id),
+                  onAssignmentCreated: (id) =>
+                      setState(() => selectedBatchId = id),
+                )
+              : RecoveryAssignmentDetailScreen(
+                  assignmentId: selectedBatchId!,
+                  onBack: () => setState(() => selectedBatchId = null),
+                ),
+        );
+      },
+    );
+  }
+
+  testWidgets('Batches list renders empty state + status filters',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(app(batchesHost()));
+    silenceLayoutOverflow();
+    await tester.pump();
+    // BatchesScreen.addPostFrameCallback fires loadAssignments + loadOfficers.
+    await drain(tester, ms: 900);
+
+    expect(find.text('Batches'), findsOneWidget);
+    expect(find.text('No Batches Found'), findsOneWidget);
+    // Status filter chips (All / Active / Completed / Cancelled).
+    expect(find.text('All'), findsOneWidget);
+    expect(find.text('Active'), findsOneWidget);
+    expect(find.text('Completed'), findsOneWidget);
+    expect(find.text('Cancelled'), findsOneWidget);
+    // New Batch action is present (header FilledButton).
+    expect(find.widgetWithText(FilledButton, 'New Batch'), findsOneWidget);
+  });
+
+  testWidgets(
+    'Batches list shows a created batch and opens its detail on tap',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(app(batchesHost()));
+      silenceLayoutOverflow();
+      await tester.pump();
+      await drain(tester, ms: 900); // initial load -> empty
+
+      expect(find.text('No Batches Found'), findsOneWidget);
+
+      // Create a batch via the provider. admin = super-admin has
+      // assignment.create; seeded officer (sam.mugisha) + seeded case
+      // CASE-2026-000001 are looked up by username / case_number.
+      final recProv = Provider.of<RecoveryProvider>(
+        tester.element(find.byType(BatchesScreen)),
+        listen: false,
+      );
+      // createRecoveryAssignment / loadAssignments and the lookup queries are
+      // FFI-backed; under the widget-test's FakeAsync zone a plain `await`
+      // never settles them (they need a real event-loop window), so run
+      // everything inside `tester.runAsync` — the same reason the shared
+      // `drain()` helper exists.
+      String? batchId;
+      await tester.runAsync(() async {
+        final db = await dbHelper.database;
+        final officers = await db.query(
+          'users',
+          where: "username = ?",
+          whereArgs: ['sam.mugisha'],
+          limit: 1,
+        );
+        final officerId = officers.first['id'] as String;
+        final cases = await db.query(
+          'cases',
+          where: "case_number = ?",
+          whereArgs: ['CASE-2026-000001'],
+          limit: 1,
+        );
+        final caseId = cases.first['id'] as String;
+
+        batchId = await recProv.createRecoveryAssignment(
+          assignedEmployeeId: officerId,
+          assignedBy: session.userId,
+          targetAmount: 500000,
+          startDate: DateTime.now(),
+          deadlineDate: DateTime.now().add(const Duration(days: 5)),
+          notes: 'ui test batch',
+          caseIds: [caseId],
+        );
+        await recProv.loadAssignments();
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // The new batch's short id appears in the BATCH column.
+      expect(find.text(batchId!.substring(0, 8)), findsOneWidget);
+
+      // Tapping the row opens the batch detail (AppShell-style routing).
+      await tester.tap(find.text(batchId!.substring(0, 8)).first);
+      await tester.pump();
+      await drain(tester, ms: 900); // detail loads
+
+      expect(find.byType(RecoveryAssignmentDetailScreen), findsOneWidget);
+      expect(find.byType(BatchesScreen), findsNothing);
     },
   );
 }

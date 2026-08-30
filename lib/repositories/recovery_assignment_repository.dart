@@ -178,6 +178,26 @@ class RecoveryAssignmentRepository extends BaseRepository {
     return rows.map((r) => RecoveryAssignmentModel.fromMap(r)).toList();
   }
 
+  /// Manager scope: all recovery assignments visible to the current session.
+  /// Recovery Officers see only their own batches (mirrors [getById]'s
+  /// ownership guard); Managers / Execs / Directors / SuperAdmins see all.
+  Future<List<RecoveryAssignmentModel>> getAll({bool activeOnly = true}) async {
+    requirePermission('assignment.view');
+    final isOfficer = currentSession.roleName == 'Recovery Officer';
+    final statusClause = activeOnly ? " AND status = 'Active'" : '';
+    final db = await database;
+
+    final rows = await db.query(
+      'recovery_assignments',
+      where: isOfficer
+          ? 'assigned_employee_id = ? AND IsDeleted = 0$statusClause'
+          : 'IsDeleted = 0$statusClause',
+      whereArgs: isOfficer ? [currentSession.userId] : [],
+      orderBy: 'SyncUpdatedAt DESC',
+    );
+    return rows.map((r) => RecoveryAssignmentModel.fromMap(r)).toList();
+  }
+
   /// Picker source for the Create flow: all active Recovery Officer users.
   Future<List<Map<String, dynamic>>> listRecoveryOfficers() async {
     requirePermission('assignment.view');

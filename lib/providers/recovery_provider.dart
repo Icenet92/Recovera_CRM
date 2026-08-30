@@ -438,6 +438,24 @@ class RecoveryProvider extends ChangeNotifier {
     }
   }
 
+  /// Loads all recovery assignments visible to the current session (used by the
+  /// Batches list screen). Scoping (officer = own, manager = all) is enforced in
+  /// the repository's [RecoveryAssignmentRepository.getAll].
+  Future<void> loadAssignments() async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      _recoveryAssignments = await _recoveryAssignmentRepo.getAll(activeOnly: false);
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   /// Loads a batch's detail: assignment + pooled cases + cached look-ups used
   /// for time-to-recovery computation.
   Future<void> loadRecoveryAssignment(String id) async {

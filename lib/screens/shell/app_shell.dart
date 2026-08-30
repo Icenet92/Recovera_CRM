@@ -6,6 +6,7 @@ import '../network_setup_screen.dart';
 import '../crm/clients_screen.dart';
 import '../crm/leads_screen.dart';
 import '../crm/contacts_screen.dart';
+import '../recovery/batches_screen.dart';
 import '../recovery/cases_screen.dart';
 import '../recovery/case_detail_screen.dart';
 import '../recovery/debtors_screen.dart';
@@ -60,6 +61,12 @@ class _AppShellState extends State<AppShell> {
     } else if (_currentRoute == 'Cases') {
       return CasesScreen(
         onCaseSelected: (id) => setState(() => _selectedCaseId = id),
+        onAssignmentCreated: (id) =>
+            setState(() => _selectedAssignmentId = id),
+      );
+    } else if (_currentRoute == 'Batches') {
+      return BatchesScreen(
+        onBatchSelected: (id) => setState(() => _selectedAssignmentId = id),
         onAssignmentCreated: (id) =>
             setState(() => _selectedAssignmentId = id),
       );

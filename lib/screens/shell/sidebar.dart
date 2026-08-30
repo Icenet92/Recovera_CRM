@@ -175,6 +175,11 @@ class AppSidebar extends StatelessWidget {
 
                 section('RECOVERY'),
                 item('Cases', Icons.folder_special_rounded),
+                item(
+                  'Batches',
+                  Icons.inventory_2_rounded,
+                  requiredPerm: 'assignment.view',
+                ),
                 item('Debtors', Icons.person_search_rounded),
                 item(
                   'Payments',
