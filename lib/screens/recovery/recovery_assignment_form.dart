@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../models/case_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/recovery_provider.dart';
+import '../../../providers/crm_provider.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/officer_picker.dart';
 
@@ -42,6 +43,10 @@ class _RecoveryAssignmentFormState extends State<RecoveryAssignmentForm> {
   String? _selectedOfficerId;
   DateTime? _deadline;
   final Set<String> _caseIds = {};
+  // Null = "All Clients" (the filter narrows the visible list; selection of
+  // _caseIds stays independent, so cases from multiple clients can still be
+  // pooled together in one batch).
+  String? _selectedClientId;
 
   @override
   void initState() {
@@ -53,12 +58,25 @@ class _RecoveryAssignmentFormState extends State<RecoveryAssignmentForm> {
         final prov = context.read<RecoveryProvider>();
         if (prov.officers.isEmpty) prov.loadOfficers();
         if (prov.cases.isEmpty) prov.loadCases();
+        if (prov.debtors.isEmpty) prov.loadDebtors();
+        final crmProv = context.read<CrmProvider>();
+        if (crmProv.organizations.isEmpty) crmProv.loadOrganizations();
       });
     }
   }
 
   List<CaseModel> _selectedCases(RecoveryProvider prov) =>
       prov.cases.where((c) => _caseIds.contains(c.id)).toList();
+
+  /// Resolves the debtor name for a case's row from the cached debtors list
+  /// (the form never calls the debtor repo directly). Degrades to '—' when the
+  /// debtor hasn't been loaded yet.
+  String _debtorName(CaseModel c, RecoveryProvider prov) {
+    for (final d in prov.debtors) {
+      if (d.id == c.debtorId) return d.name;
+    }
+    return '—';
+  }
 
   void _toggleCase(bool? value, CaseModel c) {
     setState(() {
@@ -152,9 +170,18 @@ class _RecoveryAssignmentFormState extends State<RecoveryAssignmentForm> {
   @override
   Widget build(BuildContext context) {
     final prov = context.watch<RecoveryProvider>();
+    final crmProv = context.watch<CrmProvider>();
     final openCases = prov.cases
         .where((c) => !c.status.toLowerCase().contains('closed'))
         .toList();
+    // Client filter: null = "All Clients". Narrows the *visible* list only —
+    // `_caseIds` selection is independent, so cases from multiple clients can
+    // still be pooled together in one batch by switching the filter.
+    final filteredCases = _selectedClientId == null
+        ? openCases
+        : openCases
+            .where((c) => c.organizationId == _selectedClientId)
+            .toList();
     final selectedCases = _selectedCases(prov);
     final autoTarget = selectedCases.fold<double>(
       0.0,
@@ -188,13 +215,42 @@ class _RecoveryAssignmentFormState extends State<RecoveryAssignmentForm> {
                   children: [
                     Text('Pool Cases', style: AppTypography.tableHeader(context)),
                     const SizedBox(height: 8),
-                    if (openCases.isEmpty)
+                    // ── Client filter ───────────────────────────────────────
+                    // Narrows the visible list only; `_caseIds` selection is
+                    // independent, so cases from multiple clients can still be
+                    // pooled together by switching this filter to "All Clients".
+                    DropdownButtonFormField<String?>(
+                      initialValue: _selectedClientId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Client',
+                        hintText: 'All Clients',
+                      ),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('All Clients'),
+                        ),
+                        ...crmProv.organizations.map(
+                          (o) => DropdownMenuItem<String?>(
+                            value: o.id,
+                            child: Text(o.companyName),
+                          ),
+                        ),
+                      ],
+                      onChanged: (v) =>
+                          setState(() => _selectedClientId = v),
+                    ),
+                    const SizedBox(height: 12),
+                    if (filteredCases.isEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         child: Text(
                           prov.cases.isEmpty
                               ? 'No cases loaded yet.'
-                              : 'No open cases available.',
+                              : _selectedClientId != null
+                                  ? 'No open cases for this client.'
+                                  : 'No open cases available.',
                           style: TextStyle(color: AppColors.textMuted),
                         ),
                       )
@@ -202,7 +258,7 @@ class _RecoveryAssignmentFormState extends State<RecoveryAssignmentForm> {
                       SizedBox(
                         height: 224,
                         child: ListView(
-                          children: openCases
+                          children: filteredCases
                               .map(
                                 (c) => CheckboxListTile(
                                   value: _caseIds.contains(c.id),
@@ -214,7 +270,27 @@ class _RecoveryAssignmentFormState extends State<RecoveryAssignmentForm> {
                                       color: AppColors.navy,
                                     ),
                                   ),
-                                  subtitle: Text(c.title),
+                                  // Debtor name (resolved from the case's
+                                  // debtorId) above the case title on each row.
+                                  subtitle: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _debtorName(c, prov),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w500),
+                                      ),
+                                      Text(
+                                        c.title,
+                                        style: TextStyle(
+                                          color: AppColors.textMuted,
+                                          fontSize: 12),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
                                   dense: true,
                                 ),
                               )
