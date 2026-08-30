@@ -34,6 +34,7 @@ import 'package:recovera_crm/screens/recovery/case_form_dialog.dart';
 import 'package:recovera_crm/screens/recovery/debtor_detail_screen.dart';
 import 'package:recovera_crm/screens/recovery/debtor_form_dialog.dart';
 import 'package:recovera_crm/screens/recovery/debtors_screen.dart';
+import 'package:recovera_crm/screens/recovery/recovery_assignment_form.dart';
 
 void main() {
   // FFI factory, no platform channels -> usable from the plain test VM.
@@ -327,6 +328,31 @@ void main() {
       expect(nameField, findsOneWidget);
       // And the "+ New" inline label is also surfaced next to the DEBTOR label.
       expect(find.text('+ New'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'RecoveryAssignmentForm: empty submission shows validation errors',
+    (WidgetTester tester) async {
+      // autoLoad:false keeps the form off the FFI-backed repository so the
+      // failure path is exercised purely through Form validation.
+      await tester.pumpWidget(
+        app(
+          Scaffold(
+            body: Center(child: RecoveryAssignmentForm(autoLoad: false)),
+          ),
+        ),
+      );
+      silenceLayoutOverflow();
+      await tester.pump();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Save Batch'));
+      await tester.pump();
+
+      expect(find.text('Please select an officer'), findsOneWidget);
+      expect(find.text('Select at least one case'), findsOneWidget);
+      expect(find.text('Enter a target amount'), findsOneWidget);
+      expect(find.text('Select a deadline'), findsOneWidget);
     },
   );
 }

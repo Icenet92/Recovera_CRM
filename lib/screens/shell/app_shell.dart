@@ -9,6 +9,7 @@ import '../crm/contacts_screen.dart';
 import '../recovery/cases_screen.dart';
 import '../recovery/case_detail_screen.dart';
 import '../recovery/debtors_screen.dart';
+import '../recovery/recovery_assignment_detail_screen.dart';
 import '../recovery/debtor_detail_screen.dart';
 import '../admin/users_screen.dart';
 import '../admin/roles_screen.dart';
@@ -24,8 +25,16 @@ class _AppShellState extends State<AppShell> {
   String _currentRoute = 'Dashboard';
   String? _selectedCaseId;
   String? _selectedDebtorId;
+  String? _selectedAssignmentId;
 
   Widget _buildBody() {
+    if (_selectedAssignmentId != null) {
+      return RecoveryAssignmentDetailScreen(
+        assignmentId: _selectedAssignmentId!,
+        onBack: () => setState(() => _selectedAssignmentId = null),
+      );
+    }
+
     if (_selectedCaseId != null) {
       return CaseDetailScreen(
         caseId: _selectedCaseId!,
@@ -51,6 +60,8 @@ class _AppShellState extends State<AppShell> {
     } else if (_currentRoute == 'Cases') {
       return CasesScreen(
         onCaseSelected: (id) => setState(() => _selectedCaseId = id),
+        onAssignmentCreated: (id) =>
+            setState(() => _selectedAssignmentId = id),
       );
     } else if (_currentRoute == 'Debtors') {
       return DebtorsScreen(
@@ -133,6 +144,7 @@ class _AppShellState extends State<AppShell> {
                     _currentRoute = route;
                     _selectedCaseId = null;
                     _selectedDebtorId = null;
+                    _selectedAssignmentId = null;
                   }),
                 ),
                 Expanded(

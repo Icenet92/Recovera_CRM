@@ -164,6 +164,75 @@
 
 ---
 
+## PHASE 3B — Recovery Assignments (Case Pools) ✅
+
+**Completed:** 2026-08-26  
+**Status:** ✅ Done — `dart analyze` clean for Phase 3B files (9 pre-existing infos only); `flutter test` 7/7 green.
+
+### What was built
+
+#### Database Schema (`lib/database/schema.dart` + `lib/database/database_helper.dart`)
+- Schema version bumped **7 → 8**.
+- New synced tables:
+  - `recovery_assignments` — `id PK, assigned_employee_id, assigned_by, target_amount, start_date, deadline_date, status (DEFAULT 'Active'), notes`.
+  - `case_assignment_batch_history` — `id PK, recovery_assignment_id, case_id, added_date, removed_date` (membership / time-in-pool ledger).
+- Indexes: `idx_case_assignment_batch_history_assignment_id`, `idx_case_assignment_batch_history_case_id`, `idx_recovery_assignments_employee_id`.
+- Added to **both** `createAllTables` (fresh/test DBs) and `onUpgrade` (`if (oldVersion < 8)`).
+- `assigned_employee_id` stores a **user id** (consistent with `cases.primary_owner_id` / `case_assignments.assigned_to_employee_id`).
+
+#### Sync Registration (`lib/sync/sync_constants.dart`)
+- `recovery_assignments` and `case_assignment_batch_history` appended to `kSyncedTables` (both carry the shared `Sync*` audit trail columns).
+
+#### Model (`lib/models/recovery_assignment_model.dart`)
+- `RecoveryAssignmentModel` — `toMap`/`fromMap`/`copyWith`; computed `isOverdue` (`deadlineDate.isBefore(DateTime.now())`) and `isActive`.
+- `RecoveryAssignmentBatchHistoryModel` — `toMap`/`fromMap`/`copyWith`; `isPresent` (added, not yet removed).
+- Pure Dart, no Flutter/SQLite imports.
+
+#### Repository (`lib/repositories/recovery_assignment_repository.dart`)
+- `extends BaseRepository`; permission enforced per-method (`assignment.*`), no wildcards. Super Admins bypass all checks via `AuthSession.hasPermission`.
+- `create(assignment, caseIds)` — **active-batch guard** (a case may belong to at most one active batch; throws otherwise); inserts assignment + batch_history members + `audit_logs` in a transaction.
+- `getById` — **Recovery-Officer ownership guard** (officers may only load their own batches; Managers/Directors/Execs/SuperAdmin may view any).
+- `getByEmployee` — row-scoped list for the officer picker detail.
+- `getByClient` — manager scope: active batches whose pooled cases belong to a client org.
+- `getAssignmentCases`, `getCaseAddedDate`, `listRecoveryOfficers` (users JOIN roles WHERE `roles.name='Recovery Officer'`).
+- `updateStatus` — rejects the read-time `'Overdue'` value (computed only). `removeCaseFromBatch` — soft-removes a member (sets `removed_date`) + audit.
+
+#### Seeds (`lib/database/seeds.dart`)
+- New permissions (category `'assignments'`): `assignment.view`, `assignment.create`, `assignment.edit`, `assignment.delete`.
+- Role grants:
+  | Role | view | create | edit | delete |
+  |------|------|--------|------|--------|
+  | Executive / Director | ✅ | ✅ | ✅ | ✅ |
+  | Manager | ✅ | ✅ | ✅ | ✅ |
+  | Case Manager | ✅ | ✅ | ✅ | ✅ |
+  | Recovery Officer | ✅ | ❌ | ❌ | ❌ |
+  | (others) | ❌ | ❌ | ❌ | ❌ |
+- Super Admin auto-granted all four (existing `assignPerms(superAdminId, all)`).
+- **Seeded test-only Recovery Officer** user `sam.mugisha` / `Agent@1234` (role: Recovery Officer, `is_active=1`). Used by the Phase 3B tests only — **not** a real account and must be rotated/removed before production seeding.
+
+#### Provider (`lib/providers/recovery_provider.dart`)
+- Constructor now `RecoveryProvider(caseRepo, debtorRepo, recoveryAssignmentRepo)`; `additionalRepos` propagated through `AuthRepository` in `main.dart`, `debtors_ui_test.dart`, and `recovery_flow_test.dart` so `login()` sets the session on the new repo.
+- Added: `createRecoveryAssignment` (returns the new id; auto-suggests target from pooled cases), `loadRecoveryAssignment` (detail + cached `added_date`/`case_status_history` per pooled case), `loadAssignmentsForEmployee` (row scope), `loadAssignmentsForClient`, `loadOfficers`, `completeAssignment`, `cancelAssignment`, `removeCaseFromBatch`.
+- Getters: `recoveryAssignments`, `currentAssignment`, `currentAssignmentCases`, `officers`, `hasCurrentAssignment`.
+- Computed: `currentAssignmentRecoveredAmount` (0.0 until Phase 5 payments), `timeToRecoveryForCase` (resolved−added when closed; now−added while in-progress).
+
+#### UI
+- `lib/screens/recovery/recovery_assignment_form.dart` — Create-as-modal (`AlertDialog` + `Form`): officer dropdown (`listRecoveryOfficers`), case multi-select (`CheckboxListTile` over open cases), auto-suggested target editable, deadline date-picker, optional notes. Target auto-suggests from Σ `CaseModel.outstandingAmount`; stops auto-updating once the user edits.
+- `lib/screens/recovery/recovery_assignment_detail_screen.dart` — detail view: target vs. recovered stat cards + LinearProgress, deadline vs. today (`isOverdue` chip), active-batch actions (Complete / Cancel / Remove case from pool), pooled-cases table with `timeToRecoveryForCase` per case.
+- Wiring: `CasesScreen` header gained a **Create Batch** button (opens the form); `onAssignmentCreated(id)` bubbles up to `AppShell`, which routes to `RecoveryAssignmentDetailScreen` via `_selectedAssignmentId` (mirrors the existing `_selectedCaseId` detail routing). `main.dart` provider wiring updated.
+
+### Tests
+- `test/recovery_flow_test.dart` — **Phase 3B integration test**: Super Admin pools Acme's seeded case + a 2nd created case into a batch for the seeded officer; asserts 2 `case_assignment_batch_history` rows, target = Σ outstanding, `audit_logs` `assignment.create`, row-scoping (`getByEmployee` → 1), `currentAssignmentRecoveredAmount == 0.0`, in-progress `timeToRecoveryForCase > 0`, and the **active-batch guard** rejects reusing a case.
+- `test/debtors_ui_test.dart` — **widget test**: empty `RecoveryAssignmentForm` submission shows all 4 validation errors (officer / case / target / deadline). `autoLoad:false` keeps it off the FFI-backed repository.
+- Full suite: **7/7 green** (`flutter test` EXITCODE=0; the 5 original tests remain green + 2 new). `dart analyze lib test` clean for all Phase 3B files.
+
+### Known gaps / forward hooks
+- `RecoveryAssignmentForm`/`DetailScreen` are not click-tested end-to-end (headless harness). The data layer is verified via the integration test; the form is verified for validation via widget test.
+- No dedicated "Recovery Assignments" list route in the sidebar yet; a batch is reachable via CasesScreen → Create Batch → detail. A full officer/manager batch list is a small follow-up.
+- `target_amount` auto-suggest uses `CaseModel.outstandingAmount` (`= totalClaim` until Phase 5 introduces verified payments / adjustments).
+
+---
+
 ## PHASE 4 — Tasks, Activities, Calendar ⬜
 ## PHASE 5 — Payments, Promises, Financial Integrity ⬜
 ## PHASE 6 — Documents, SLA, Aging ⬜

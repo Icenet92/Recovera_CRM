@@ -36,6 +36,7 @@ class RecoveryProvider extends ChangeNotifier {
   // Cached per-case batch + status-history look-ups for time-to-recovery.
   final Map<String, DateTime> _caseAddedDates = {};
   final Map<String, List<CaseStatusHistoryModel>> _caseStatusHistoryByCase = {};
+  List<Map<String, dynamic>> _officers = [];
 
   bool _isLoading = false;
   String? _error;
@@ -60,6 +61,7 @@ class RecoveryProvider extends ChangeNotifier {
   RecoveryAssignmentModel? get currentAssignment => _currentAssignment;
   List<CaseModel> get currentAssignmentCases => _assignmentCases;
   bool get hasCurrentAssignment => _currentAssignment != null;
+  List<Map<String, dynamic>> get officers => _officers;
   
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -341,7 +343,7 @@ class RecoveryProvider extends ChangeNotifier {
 
   // ── Recovery Assignments (Phase 3B) ────────────────────────────────────────
 
-  Future<void> createRecoveryAssignment({
+  Future<String> createRecoveryAssignment({
     required String assignedEmployeeId,
     required String assignedBy,
     required double targetAmount,
@@ -354,6 +356,7 @@ class RecoveryProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
 
+    String assignmentId = '';
     try {
       final assignment = RecoveryAssignmentModel(
         id: const Uuid().v4(),
@@ -365,15 +368,18 @@ class RecoveryProvider extends ChangeNotifier {
         status: 'Active',
         notes: notes,
       );
-      await _recoveryAssignmentRepo.create(assignment, caseIds);
+      final created =
+          await _recoveryAssignmentRepo.create(assignment, caseIds);
       // Refresh the officer's row-scoped list.
       await loadAssignmentsForEmployee(assignedEmployeeId);
+      assignmentId = created.id;
     } catch (e) {
       _error = e.toString();
       _isLoading = false;
       notifyListeners();
       rethrow;
     }
+    return assignmentId;
   }
 
   /// Row-scoped list: an officer only ever sees their own batches.
@@ -389,6 +395,18 @@ class RecoveryProvider extends ChangeNotifier {
       _error = e.toString();
     } finally {
       _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Loads Recovery Officers for the Create-assignment picker.
+  Future<void> loadOfficers() async {
+    try {
+      _officers = await _recoveryAssignmentRepo.listRecoveryOfficers();
+    } catch (e) {
+      _error = e.toString();
+      rethrow;
+    } finally {
       notifyListeners();
     }
   }

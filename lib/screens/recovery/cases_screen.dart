@@ -4,10 +4,16 @@ import '../../../providers/recovery_provider.dart';
 import '../../../theme/app_theme.dart';
 import '../crm/clients_screen.dart'; // For StatusBadge
 import 'case_form_dialog.dart';
+import 'recovery_assignment_form.dart';
 
 class CasesScreen extends StatefulWidget {
   final Function(String) onCaseSelected;
-  const CasesScreen({super.key, required this.onCaseSelected});
+  final void Function(String assignmentId)? onAssignmentCreated;
+  const CasesScreen({
+    super.key,
+    required this.onCaseSelected,
+    this.onAssignmentCreated,
+  });
 
   @override
   State<CasesScreen> createState() => _CasesScreenState();
@@ -24,6 +30,15 @@ class _CasesScreenState extends State<CasesScreen> {
 
   void _newCase() {
     showDialog(context: context, builder: (_) => const CaseFormDialog());
+  }
+
+  void _createBatch() {
+    showDialog(
+      context: context,
+      builder: (_) => RecoveryAssignmentForm(
+        onCreated: widget.onAssignmentCreated,
+      ),
+    );
   }
 
   @override
@@ -58,6 +73,12 @@ class _CasesScreenState extends State<CasesScreen> {
                 onPressed: _newCase,
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('New Case'),
+              ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                onPressed: _createBatch,
+                icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                label: const Text('Create Batch'),
               ),
             ],
           ),
