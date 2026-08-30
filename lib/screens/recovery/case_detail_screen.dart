@@ -85,10 +85,11 @@ class _CaseDetailScreenState extends State<CaseDetailScreen>
 
     final isClosed = cModel.status.toLowerCase().contains('closed');
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Header
+    return Scaffold(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
           decoration: const BoxDecoration(
@@ -262,6 +263,7 @@ class _CaseDetailScreenState extends State<CaseDetailScreen>
           ),
         ),
       ],
+      ),
     );
   }
 

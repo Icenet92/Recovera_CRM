@@ -81,10 +81,11 @@ class _RecoveryAssignmentDetailScreenState
         : 0.0;
     final isActive = a.status == 'Active';
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Header
+    return Scaffold(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
           decoration: const BoxDecoration(
@@ -289,6 +290,7 @@ class _RecoveryAssignmentDetailScreenState
           ),
         ),
       ],
+      ),
     );
   }
 }
