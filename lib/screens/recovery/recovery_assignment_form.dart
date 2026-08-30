@@ -40,6 +40,13 @@ class _RecoveryAssignmentFormState extends State<RecoveryAssignmentForm> {
   bool _submitted = false;
   bool _isSaving = false;
   bool _targetDirty = false;
+  // When the form programmatically writes the auto-suggested value into
+  // `_targetCtrl`, the listener below must NOT mark the field "dirty" (that
+  // previously froze the auto-suggestion after the very first case toggle —
+  // adding a 2nd case stopped updating the total). Set this around programmatic
+  // writes so only real user edits flip `_targetDirty`, after which the manual
+  // value is preserved on subsequent case toggles.
+  bool _suppressDirty = false;
   String? _selectedOfficerId;
   DateTime? _deadline;
   final Set<String> _caseIds = {};
@@ -52,7 +59,10 @@ class _RecoveryAssignmentFormState extends State<RecoveryAssignmentForm> {
   void initState() {
     super.initState();
     // Once the user types in the target, stop auto-suggesting on case toggles.
-    _targetCtrl.addListener(() => _targetDirty = true);
+    _targetCtrl.addListener(() {
+      if (_suppressDirty) return;
+      _targetDirty = true;
+    });
     if (widget.autoLoad) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final prov = context.read<RecoveryProvider>();
@@ -98,7 +108,11 @@ class _RecoveryAssignmentFormState extends State<RecoveryAssignmentForm> {
       0.0,
       (s, c) => s + c.outstandingAmount,
     );
+    // Programmatic write: suppress the dirty flagging so multi-toggle
+    // auto-summing keeps working (see `_suppressDirty`).
+    _suppressDirty = true;
     _targetCtrl.text = total.toStringAsFixed(0);
+    _suppressDirty = false;
   }
 
   Future<void> _pickDeadline() async {
@@ -313,9 +327,12 @@ class _RecoveryAssignmentFormState extends State<RecoveryAssignmentForm> {
                 const SizedBox(height: 20),
                 // ── Target (auto-suggested) ────────────────────────────────
                 TextFormField(
+                  key: const Key('target_amount'),
                   controller: _targetCtrl,
                   decoration: InputDecoration(
                     labelText: 'Target Amount (RWF)',
+                    helperText:
+                        'Auto-suggested from total outstanding — adjust as needed.',
                     hintText: _targetDirty
                         ? null
                         : 'Auto-suggested: ${autoTarget.toStringAsFixed(0)}',

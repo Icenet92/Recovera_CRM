@@ -18,6 +18,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:recovera_crm/database/database_helper.dart';
 import 'package:recovera_crm/models/auth_session.dart';
+import 'package:recovera_crm/models/case_model.dart';
 import 'package:recovera_crm/providers/auth_provider.dart';
 import 'package:recovera_crm/providers/crm_provider.dart';
 import 'package:recovera_crm/providers/recovery_provider.dart';
@@ -357,6 +358,88 @@ void main() {
       expect(find.text('Select at least one case'), findsOneWidget);
       expect(find.text('Enter a target amount'), findsOneWidget);
       expect(find.text('Select a deadline'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'RecoveryAssignmentForm: target auto-sums across toggles and manual override persists',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        app(
+          Scaffold(
+            body: Center(child: RecoveryAssignmentForm()),
+          ),
+        ),
+      );
+      silenceLayoutOverflow();
+      // First frame schedules the form's addPostFrameCallback loads; drain the
+      // FFI-backed officer/case/debtor/org fetches.
+      await tester.pump();
+      await drain(tester, ms: 900);
+
+      final recProv = Provider.of<RecoveryProvider>(
+        tester.element(find.byType(RecoveryAssignmentForm)),
+        listen: false,
+      );
+
+      // Seed a 2nd open case (same client/debtor as CASE-2026-000001) so we
+      // can toggle twice and watch the running total change.
+      final seeded = recProv.cases.firstWhere(
+        (c) => !c.status.toLowerCase().contains('closed'),
+      );
+      final case2 = CaseModel(
+        id: 'test-override-case-2',
+        caseNumber: '', // repo auto-generates CASE-YYYY-NNNNNN
+        organizationId: seeded.organizationId,
+        debtorId: seeded.debtorId,
+        title: 'Override Toggle Case 2',
+        priority: 'Low',
+        status: 'Open',
+        dateReceived: DateTime.now(),
+        principal: 0.0,
+        interest: 0.0,
+        penalties: 0.0,
+        fees: 0.0,
+        totalClaim: 250000.0,
+        difficulty: 'Easy',
+      );
+      await tester.runAsync(() async {
+        await recProv.createCase(case2);
+      });
+      await drain(tester, ms: 200);
+
+      // Two open cases -> two checkboxes.
+      expect(find.byType(CheckboxListTile), findsNWidgets(2));
+
+      final target = (tester.widget<TextFormField>(
+        find.byKey(const Key('target_amount')),
+      )).controller!;
+      expect(target.text, isEmpty, reason: 'no cases selected yet');
+
+      // Select case #1 -> target auto-suggests its outstanding (= total_claim).
+      await tester.tap(find.byType(CheckboxListTile).first);
+      await tester.pump();
+      expect(target.text, seeded.outstandingAmount.toStringAsFixed(0));
+
+      // Select case #2 -> auto-suggestion must UPDATE to the running sum.
+      // (Previously the programmatic write flipped _targetDirty, freezing the
+      // total at the 1st case's amount after the first toggle.)
+      await tester.tap(find.byType(CheckboxListTile).last);
+      await tester.pump();
+      expect(
+        target.text,
+        (seeded.outstandingAmount + case2.outstandingAmount)
+            .toStringAsFixed(0),
+      );
+
+      // Manual override.
+      await tester.enterText(find.byKey(const Key('target_amount')), '99999');
+      expect(target.text, '99999');
+
+      // Toggling a case after a manual edit must NOT revert to the auto-sum.
+      await tester.tap(find.byType(CheckboxListTile).first);
+      await tester.pump();
+      expect(target.text, '99999', reason: 'manual override must persist');
     },
   );
 
