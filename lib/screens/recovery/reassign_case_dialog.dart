@@ -1,9 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import '../../../models/case_model.dart';
 import '../../../providers/recovery_provider.dart';
 import '../../../theme/app_theme.dart';
-import '../../../models/case_model.dart';
+import '../../../widgets/officer_picker.dart';
 
+/// Modal shown from the Case Detail screen's "Reassign" button.
+///
+/// Replaces the previous raw "Employee ID" text fields (which had no name
+/// lookup and were unsearchable) with [OfficerPicker] dropdowns that show
+/// "Full Name — Job Title" and report the officer's user id — the exact
+/// value [RecoveryProvider.reassignCase] expects for
+/// `cases.primary_owner_id` / `cases.supervisor_id`.
 class ReassignCaseDialog extends StatefulWidget {
   final CaseModel caseModel;
   const ReassignCaseDialog({super.key, required this.caseModel});
@@ -14,23 +23,22 @@ class ReassignCaseDialog extends StatefulWidget {
 
 class _ReassignCaseDialogState extends State<ReassignCaseDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _ownerCtrl =
-      TextEditingController(); // In real app, this would be a dropdown of employees
-  final _supervisorCtrl = TextEditingController();
   final _reasonCtrl = TextEditingController();
+
+  // Selected officer user ids; seeded from the case's current assignment.
+  String? _ownerId;
+  String? _supervisorId;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _ownerCtrl.text = widget.caseModel.primaryOwnerId ?? '';
-    _supervisorCtrl.text = widget.caseModel.supervisorId ?? '';
+    _ownerId = widget.caseModel.primaryOwnerId;
+    _supervisorId = widget.caseModel.supervisorId;
   }
 
   @override
   void dispose() {
-    _ownerCtrl.dispose();
-    _supervisorCtrl.dispose();
     _reasonCtrl.dispose();
     super.dispose();
   }
@@ -41,13 +49,11 @@ class _ReassignCaseDialogState extends State<ReassignCaseDialog> {
 
     try {
       await context.read<RecoveryProvider>().reassignCase(
-        widget.caseModel.id,
-        _ownerCtrl.text.trim(),
-        _supervisorCtrl.text.trim().isEmpty
-            ? null
-            : _supervisorCtrl.text.trim(),
-        _reasonCtrl.text.trim(),
-      );
+            widget.caseModel.id,
+            _ownerId?.trim() ?? '',
+            (_supervisorId?.trim() ?? '').isEmpty ? null : _supervisorId!.trim(),
+            _reasonCtrl.text.trim(),
+          );
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
@@ -81,8 +87,9 @@ class _ReassignCaseDialogState extends State<ReassignCaseDialog> {
               ),
               const SizedBox(height: 24),
 
+              // ── New Owner ───────────────────────────────────────────────
               const Text(
-                'NEW OWNER (Employee ID)',
+                'NEW OWNER (Recovery Officer)',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
@@ -90,17 +97,19 @@ class _ReassignCaseDialogState extends State<ReassignCaseDialog> {
                 ),
               ),
               const SizedBox(height: 4),
-              TextFormField(
-                controller: _ownerCtrl,
+              OfficerPicker(
+                value: _ownerId,
+                onChanged: (v) => setState(() => _ownerId = v),
+                validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
                 decoration: const InputDecoration(
-                  hintText: 'Enter employee ID',
+                  hintText: 'Search officer…',
                 ),
-                validator: (v) => v!.trim().isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 16),
 
+              // ── Supervisor (optional) ───────────────────────────────────
               const Text(
-                'SUPERVISOR (Employee ID)',
+                'SUPERVISOR (Recovery Officer)',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
@@ -108,12 +117,17 @@ class _ReassignCaseDialogState extends State<ReassignCaseDialog> {
                 ),
               ),
               const SizedBox(height: 4),
-              TextFormField(
-                controller: _supervisorCtrl,
-                decoration: const InputDecoration(hintText: 'Optional'),
+              OfficerPicker(
+                value: _supervisorId,
+                onChanged: (v) => setState(() => _supervisorId = v),
+                // Optional field — no validator.
+                decoration: const InputDecoration(
+                  hintText: 'Search officer…',
+                ),
               ),
               const SizedBox(height: 16),
 
+              // ── Reason ──────────────────────────────────────────────────
               const Text(
                 'REASON',
                 style: TextStyle(

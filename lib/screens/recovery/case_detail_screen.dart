@@ -7,6 +7,7 @@ import '../../../theme/app_theme.dart';
 import '../crm/clients_screen.dart'; // For StatusBadge
 import 'reassign_case_dialog.dart';
 import 'close_case_dialog.dart';
+import '../../../widgets/officer_picker.dart';
 
 class CaseDetailScreen extends StatefulWidget {
   final String caseId;
@@ -279,38 +280,49 @@ class _CaseDetailScreenState extends State<CaseDetailScreen>
   }
 
   void _addSupportingEmployee(
-    BuildContext context,
+    BuildContext ctx,
     String caseId,
     RecoveryProvider prov,
   ) {
-    final ctrl = TextEditingController();
+    // Held outside the picker; the Add button reads it. The OfficerPicker is
+    // seeded from the same provider officers the Reassign dialog uses.
+    String? selectedId;
     showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Add Supporting Officer'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Employee ID',
-            hintText: 'Enter employee ID',
+      context: ctx,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Add Supporting Officer'),
+          content: SizedBox(
+            width: 400,
+            child: OfficerPicker(
+              onChanged: (id) {
+                selectedId = id;
+                setDialogState(() {});
+              },
+              decoration: const InputDecoration(
+                labelText: 'Employee ID',
+                hintText: 'Search officer…',
+              ),
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: selectedId == null || selectedId!.isEmpty
+                  ? null
+                  : () {
+                      final id = selectedId!.trim();
+                      if (id.isEmpty) return;
+                      Navigator.pop(context);
+                      prov.addSupportingEmployee(caseId, id);
+                    },
+              child: const Text('Add'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final id = ctrl.text.trim();
-              if (id.isEmpty) return;
-              Navigator.pop(context);
-              prov.addSupportingEmployee(caseId, id);
-            },
-            child: const Text('Add'),
-          ),
-        ],
       ),
     );
   }

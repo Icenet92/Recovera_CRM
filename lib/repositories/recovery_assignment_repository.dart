@@ -204,7 +204,8 @@ class RecoveryAssignmentRepository extends BaseRepository {
     final db = await database;
     return db.rawQuery('''
       SELECT u.id AS id, u.username AS username,
-             e.first_name AS first_name, e.last_name AS last_name
+             e.first_name AS first_name, e.last_name AS last_name,
+             e.job_title AS job_title
       FROM users u
       INNER JOIN roles r ON r.id = u.role_id
       LEFT JOIN employees e ON e.id = u.employee_id

@@ -4,6 +4,7 @@ import '../../../models/case_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/recovery_provider.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/officer_picker.dart';
 
 /// Phase 3B — Create a Recovery Assignment (a "Case Pool") for one officer.
 ///
@@ -171,24 +172,14 @@ class _RecoveryAssignmentFormState extends State<RecoveryAssignmentForm> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // ── Officer ───────────────────────────────────────────────
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedOfficerId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Recovery Officer',
-                  ),
-                  items: prov.officers
-                      .map(
-                        (o) => DropdownMenuItem<String>(
-                          value: o['id'] as String,
-                          child: Text(o['username'] as String),
-                        ),
-                      )
-                      .toList(),
+                OfficerPicker(
+                  value: _selectedOfficerId,
+                  autoLoad: widget.autoLoad,
                   onChanged: (v) => setState(() => _selectedOfficerId = v),
                   validator: (v) => (v == null || v.isEmpty)
                       ? 'Please select an officer'
                       : null,
+                  decoration: const InputDecoration(labelText: 'Recovery Officer'),
                 ),
                 const SizedBox(height: 20),
                 // ── Cases ─────────────────────────────────────────────────
