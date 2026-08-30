@@ -361,6 +361,39 @@ Future<void> createAllTables(Database db) async {
       )
     ''');
 
+    // 21. recovery_assignments (Phase 3B batch/pool wrapper)
+    await txn.execute('''
+      CREATE TABLE recovery_assignments (
+        id TEXT PRIMARY KEY,
+        assigned_employee_id TEXT NOT NULL,
+        assigned_by TEXT NOT NULL,
+        target_amount REAL NOT NULL,
+        start_date TEXT NOT NULL,
+        deadline_date TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Active',
+        notes TEXT,
+        SyncCreatedAt TEXT NOT NULL,
+        SyncUpdatedAt TEXT NOT NULL,
+        IsDeleted INTEGER NOT NULL DEFAULT 0,
+        DeletedAt TEXT
+      )
+    ''');
+
+    // 22. case_assignment_batch_history (cases pooled into a recovery assignment)
+    await txn.execute('''
+      CREATE TABLE case_assignment_batch_history (
+        id TEXT PRIMARY KEY,
+        recovery_assignment_id TEXT NOT NULL,
+        case_id TEXT NOT NULL,
+        added_date TEXT NOT NULL,
+        removed_date TEXT,
+        SyncCreatedAt TEXT NOT NULL,
+        SyncUpdatedAt TEXT NOT NULL,
+        IsDeleted INTEGER NOT NULL DEFAULT 0,
+        DeletedAt TEXT
+      )
+    ''');
+
     // LOCAL-ONLY TABLES
 
     // 9. network_config

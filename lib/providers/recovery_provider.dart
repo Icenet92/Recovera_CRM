@@ -1,13 +1,17 @@
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 import '../models/case_model.dart';
 import '../models/debtor_model.dart';
+import '../models/case_assignment_model.dart';
+import '../models/recovery_assignment_model.dart';
 import '../repositories/case_repository.dart';
 import '../repositories/debtor_repository.dart';
-import '../models/case_assignment_model.dart';
+import '../repositories/recovery_assignment_repository.dart';
 
 class RecoveryProvider extends ChangeNotifier {
   final CaseRepository _caseRepo;
   final DebtorRepository _debtorRepo;
+  final RecoveryAssignmentRepository _recoveryAssignmentRepo;
 
   List<CaseModel> _cases = [];
   List<CaseModel> _clientCases = [];   // Cases for a specific client
@@ -25,10 +29,18 @@ class RecoveryProvider extends ChangeNotifier {
   List<CaseStatusHistoryModel> _statusHistory = [];
   List<CaseSupportingEmployeeModel> _supportingEmployees = [];
 
+  // Phase 3B — Recovery Assignments (Case Pools)
+  List<RecoveryAssignmentModel> _recoveryAssignments = [];
+  RecoveryAssignmentModel? _currentAssignment;
+  List<CaseModel> _assignmentCases = [];
+  // Cached per-case batch + status-history look-ups for time-to-recovery.
+  final Map<String, DateTime> _caseAddedDates = {};
+  final Map<String, List<CaseStatusHistoryModel>> _caseStatusHistoryByCase = {};
+
   bool _isLoading = false;
   String? _error;
 
-  RecoveryProvider(this._caseRepo, this._debtorRepo);
+  RecoveryProvider(this._caseRepo, this._debtorRepo, this._recoveryAssignmentRepo);
 
   List<CaseModel> get cases => _cases;
   List<CaseModel> get clientCases => _clientCases;
@@ -42,6 +54,12 @@ class RecoveryProvider extends ChangeNotifier {
   List<CaseAssignmentModel> get assignments => _assignments;
   List<CaseStatusHistoryModel> get statusHistory => _statusHistory;
   List<CaseSupportingEmployeeModel> get supportingEmployees => _supportingEmployees;
+
+  // Phase 3B getters
+  List<RecoveryAssignmentModel> get recoveryAssignments => _recoveryAssignments;
+  RecoveryAssignmentModel? get currentAssignment => _currentAssignment;
+  List<CaseModel> get currentAssignmentCases => _assignmentCases;
+  bool get hasCurrentAssignment => _currentAssignment != null;
   
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -319,5 +337,143 @@ class RecoveryProvider extends ChangeNotifier {
       notifyListeners();
       rethrow;
     }
+  }
+
+  // ── Recovery Assignments (Phase 3B) ────────────────────────────────────────
+
+  Future<void> createRecoveryAssignment({
+    required String assignedEmployeeId,
+    required String assignedBy,
+    required double targetAmount,
+    required DateTime startDate,
+    required DateTime deadlineDate,
+    String? notes,
+    required List<String> caseIds,
+  }) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final assignment = RecoveryAssignmentModel(
+        id: const Uuid().v4(),
+        assignedEmployeeId: assignedEmployeeId,
+        assignedBy: assignedBy,
+        targetAmount: targetAmount,
+        startDate: startDate,
+        deadlineDate: deadlineDate,
+        status: 'Active',
+        notes: notes,
+      );
+      await _recoveryAssignmentRepo.create(assignment, caseIds);
+      // Refresh the officer's row-scoped list.
+      await loadAssignmentsForEmployee(assignedEmployeeId);
+    } catch (e) {
+      _error = e.toString();
+      _isLoading = false;
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Row-scoped list: an officer only ever sees their own batches.
+  Future<void> loadAssignmentsForEmployee(String employeeId) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      _recoveryAssignments =
+          await _recoveryAssignmentRepo.getByEmployee(employeeId);
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Manager scope: batches whose pooled cases belong to a client.
+  Future<void> loadAssignmentsForClient(String clientId) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      _recoveryAssignments =
+          await _recoveryAssignmentRepo.getByClient(clientId);
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Loads a batch's detail: assignment + pooled cases + cached look-ups used
+  /// for time-to-recovery computation.
+  Future<void> loadRecoveryAssignment(String id) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      _currentAssignment = await _recoveryAssignmentRepo.getById(id);
+      _assignmentCases = [];
+      _caseAddedDates.clear();
+      _caseStatusHistoryByCase.clear();
+      final assignment = _currentAssignment;
+      if (assignment != null) {
+        _assignmentCases =
+            await _recoveryAssignmentRepo.getAssignmentCases(id);
+        for (final c in _assignmentCases) {
+          final added =
+              await _recoveryAssignmentRepo.getCaseAddedDate(id, c.id);
+          if (added != null) _caseAddedDates[c.id] = added;
+          _caseStatusHistoryByCase[c.id] =
+              await _caseRepo.getStatusHistory(c.id);
+        }
+      }
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Verified payments live in Phase 5; until then recovered == 0.0.
+  double get currentAssignmentRecoveredAmount => 0.0;
+
+  /// Time-to-recovery for a pooled case = resolved-date − added-date.
+  /// Falls back to now − added-date (in-progress) when the case has not yet
+  /// reached a closed/resolved status.
+  Duration? timeToRecoveryForCase(String caseId) {
+    final added = _caseAddedDates[caseId];
+    if (added == null) return null;
+
+    final hist = _caseStatusHistoryByCase[caseId] ?? [];
+    DateTime? resolved;
+    for (final h in hist) {
+      if (h.newStatus.toLowerCase().contains('closed')) {
+        resolved = h.changeDate;
+      }
+    }
+    if (resolved != null) return resolved.difference(added);
+    return DateTime.now().difference(added);
+  }
+
+  Future<void> completeAssignment(String id) =>
+      _recoveryAssignmentRepo.updateStatus(id, 'Completed');
+
+  Future<void> cancelAssignment(String id) =>
+      _recoveryAssignmentRepo.updateStatus(id, 'Cancelled');
+
+  Future<void> removeCaseFromBatch(String assignmentId, String caseId) async {
+    await _recoveryAssignmentRepo.removeCaseFromBatch(
+      assignmentId,
+      caseId,
+    );
+    await loadRecoveryAssignment(assignmentId);
   }
 }

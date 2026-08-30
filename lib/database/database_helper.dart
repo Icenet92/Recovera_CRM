@@ -62,7 +62,7 @@ class DatabaseHelper {
     return await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 7,
+        version: 8,
         onCreate: (db, version) async {
           await _createTables(db);
           await _seedData(db);
@@ -247,6 +247,47 @@ class DatabaseHelper {
             // For existing installs, the backfilled data is sufficient; NOT NULL enforced at app layer
             await db.execute(
               'CREATE INDEX IF NOT EXISTS idx_debtors_client_id ON debtors(client_id)',
+            );
+          }
+          if (oldVersion < 8) {
+            // Phase 3B: Recovery Assignments (Case Pools)
+            await db.execute('''
+              CREATE TABLE IF NOT EXISTS recovery_assignments (
+                id TEXT PRIMARY KEY,
+                assigned_employee_id TEXT NOT NULL,
+                assigned_by TEXT NOT NULL,
+                target_amount REAL NOT NULL,
+                start_date TEXT NOT NULL,
+                deadline_date TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'Active',
+                notes TEXT,
+                SyncCreatedAt TEXT NOT NULL,
+                SyncUpdatedAt TEXT NOT NULL,
+                IsDeleted INTEGER NOT NULL DEFAULT 0,
+                DeletedAt TEXT
+              )
+            ''');
+            await db.execute('''
+              CREATE TABLE IF NOT EXISTS case_assignment_batch_history (
+                id TEXT PRIMARY KEY,
+                recovery_assignment_id TEXT NOT NULL,
+                case_id TEXT NOT NULL,
+                added_date TEXT NOT NULL,
+                removed_date TEXT,
+                SyncCreatedAt TEXT NOT NULL,
+                SyncUpdatedAt TEXT NOT NULL,
+                IsDeleted INTEGER NOT NULL DEFAULT 0,
+                DeletedAt TEXT
+              )
+            ''');
+            await db.execute(
+              'CREATE INDEX IF NOT EXISTS idx_case_assignment_batch_history_assignment_id ON case_assignment_batch_history(recovery_assignment_id)',
+            );
+            await db.execute(
+              'CREATE INDEX IF NOT EXISTS idx_case_assignment_batch_history_case_id ON case_assignment_batch_history(case_id)',
+            );
+            await db.execute(
+              'CREATE INDEX IF NOT EXISTS idx_recovery_assignments_employee_id ON recovery_assignments(assigned_employee_id)',
             );
           }
         },

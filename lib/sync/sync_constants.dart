@@ -41,4 +41,6 @@ const List<String> kSyncedTables = [
   // Phase 3 — Cases & Debtors
   'debtors', 'cases', 'case_types', 'case_statuses',
   'case_assignments', 'case_status_history', 'case_supporting_employees',
+  // Phase 3B — Recovery Assignments (Case Pools)
+  'recovery_assignments', 'case_assignment_batch_history',
 ];

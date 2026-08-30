@@ -24,6 +24,7 @@ import 'package:recovera_crm/repositories/audit_repository.dart';
 import 'package:recovera_crm/repositories/auth_repository.dart';
 import 'package:recovera_crm/repositories/case_repository.dart';
 import 'package:recovera_crm/repositories/contact_repository.dart';
+import 'package:recovera_crm/repositories/recovery_assignment_repository.dart';
 import 'package:recovera_crm/repositories/crm_activity_repository.dart';
 import 'package:recovera_crm/repositories/debtor_repository.dart';
 import 'package:recovera_crm/repositories/lead_repository.dart';
@@ -54,6 +55,7 @@ void main() {
   late CrmActivityRepository crmActivityRepo;
   late DebtorRepository debtorRepo;
   late CaseRepository caseRepo;
+  late RecoveryAssignmentRepository recoveryAssignmentRepo;
   late AuthRepository authRepo;
 
   setUp(() async {
@@ -79,6 +81,7 @@ void main() {
     crmActivityRepo = CrmActivityRepository(dbHelper);
     debtorRepo = DebtorRepository(dbHelper);
     caseRepo = CaseRepository(dbHelper);
+    recoveryAssignmentRepo = RecoveryAssignmentRepository(dbHelper);
 
     authRepo = AuthRepository(
       userRepo,
@@ -90,6 +93,7 @@ void main() {
         crmActivityRepo,
         debtorRepo,
         caseRepo,
+        recoveryAssignmentRepo,
       ],
     );
     final session = await authRepo.login('admin', 'Admin@1234');
@@ -132,7 +136,11 @@ void main() {
         providers: [
           ChangeNotifierProvider(create: (_) => AuthProvider(authRepo)),
           ChangeNotifierProvider(
-            create: (_) => RecoveryProvider(caseRepo, debtorRepo),
+            create: (_) => RecoveryProvider(
+              caseRepo,
+              debtorRepo,
+              recoveryAssignmentRepo,
+            ),
           ),
           ChangeNotifierProvider(
             create: (_) =>

@@ -17,6 +17,7 @@ import 'package:recovera_crm/repositories/auth_repository.dart';
 import 'package:recovera_crm/repositories/contact_repository.dart';
 import 'package:recovera_crm/repositories/case_repository.dart';
 import 'package:recovera_crm/repositories/crm_activity_repository.dart';
+import 'package:recovera_crm/repositories/recovery_assignment_repository.dart';
 import 'package:recovera_crm/repositories/debtor_repository.dart';
 import 'package:recovera_crm/repositories/lead_repository.dart';
 import 'package:recovera_crm/repositories/organization_repository.dart';
@@ -50,6 +51,7 @@ void main() {
     final crmActivityRepo = CrmActivityRepository(dbHelper);
     final debtorRepo = DebtorRepository(dbHelper);
     final caseRepo = CaseRepository(dbHelper);
+    final recoveryAssignmentRepo = RecoveryAssignmentRepository(dbHelper);
 
     final authRepo = AuthRepository(
       userRepo,
@@ -61,6 +63,7 @@ void main() {
         crmActivityRepo,
         debtorRepo,
         caseRepo,
+        recoveryAssignmentRepo,
       ],
     );
 
@@ -72,7 +75,7 @@ void main() {
     expect(debtorRepo.currentSession.username, 'admin');
     expect(caseRepo.currentSession.userId, session.userId);
 
-    final recProv = RecoveryProvider(caseRepo, debtorRepo);
+    final recProv = RecoveryProvider(caseRepo, debtorRepo, recoveryAssignmentRepo);
     final crmProv = CrmProvider(
       orgRepo,
       contactRepo,
@@ -249,6 +252,166 @@ void main() {
 
     // Restore the super-admin session.
     debtorRepo.setSession(session);
+
+    await dbHelper.close();
+  });
+
+  // ── Phase 3B ────────────────────────────────────────────────────────────
+  // Proves the data layer end-to-end: a manager pools 2 of Acme's cases into a
+  // batch for a Recovery Officer, the target auto-suggests from outstanding
+  // claims, rows + audit trail persist, the active-batch guard rejects reuse,
+  // and the provider computes recovered amount (0 until Phase 5) + time-in-progress.
+  test('Phase 3B: recovery assignment pools cases with an active-batch guard',
+      () async {
+    final dir = Directory.systemTemp.createTempSync('recovera_test_3b_');
+    addTearDown(() async => dir.delete(recursive: true));
+
+    final dbHelper = DatabaseHelper.withPath(dir.path);
+    final db = await dbHelper.database;
+
+    final auditRepo = AuditRepository(dbHelper);
+    final userRepo = UserRepository(dbHelper, auditRepo);
+    final orgRepo = OrganizationRepository(dbHelper, auditRepo);
+    final caseRepo = CaseRepository(dbHelper);
+    final debtorRepo = DebtorRepository(dbHelper);
+    final recoveryAssignmentRepo = RecoveryAssignmentRepository(dbHelper);
+
+    final authRepo = AuthRepository(
+      userRepo,
+      auditRepo,
+      additionalRepos: [
+        orgRepo,
+        caseRepo,
+        debtorRepo,
+        recoveryAssignmentRepo,
+      ],
+    );
+
+    final session = await authRepo.login('admin', 'Admin@1234');
+    expect(session.isSuperAdmin, isTrue);
+
+    final recProv = RecoveryProvider(
+      caseRepo,
+      debtorRepo,
+      recoveryAssignmentRepo,
+    );
+
+    // Seeded Acme debtor + Telco org + seeded case CASE-2026-000001.
+    final org1Id =
+        (await db.query('organizations', where: "company_name = ?", whereArgs: ['Telco One Rwanda'], limit: 1)).first['id'] as String;
+    final debtor1Id =
+        (await db.query('debtors', where: "name = ?", whereArgs: ['Acme Trading Corp'], limit: 1)).first['id'] as String;
+    final case1Row =
+        (await db.query('cases', where: "case_number = ?", whereArgs: ['CASE-2026-000001'], limit: 1)).first;
+    final case1Id = case1Row['id'] as String;
+    final case1Claim = (case1Row['total_claim'] as num).toDouble();
+
+    // Seeded test-only Recovery Officer user (sam.mugisha).
+    final officerId =
+        (await db.query('users', where: "username = ?", whereArgs: ['sam.mugisha'], limit: 1)).first['id'] as String;
+    expect(officerId, isNotEmpty, reason: 'seeded officer must exist');
+
+    // Create a 2nd Acme case to pool alongside the seeded one.
+    final case2 = CaseModel(
+      id: const Uuid().v4(),
+      caseNumber: '',
+      organizationId: org1Id,
+      debtorId: debtor1Id,
+      title: 'Phase 3B Pool Case 2',
+      priority: 'Medium',
+      status: 'Open',
+      dateReceived: DateTime.now(),
+      principal: 800000.0,
+      interest: 0.0,
+      penalties: 0.0,
+      fees: 0.0,
+      totalClaim: 1200000.0,
+      difficulty: 'Medium',
+    );
+    await recProv.createCase(case2);
+
+    final case2Id =
+        (await db.query('cases', where: "title = ?", whereArgs: ['Phase 3B Pool Case 2'], limit: 1)).first['id'] as String;
+
+    // Auto-suggested target = sum of outstanding claims (= total_claim until Phase 5).
+    final expectedTarget = case1Claim + 1200000.0;
+
+    final deadline = DateTime.now().add(const Duration(days: 10));
+    await recProv.createRecoveryAssignment(
+      assignedEmployeeId: officerId,
+      assignedBy: session.userId,
+      targetAmount: expectedTarget,
+      startDate: DateTime.now(),
+      deadlineDate: deadline,
+      notes: 'Phase 3B demo batch',
+      caseIds: [case1Id, case2Id],
+    );
+
+    // Persisted assignment row.
+    final assignmentRows = await db.query(
+      'recovery_assignments',
+      where: "assigned_employee_id = ? AND status = 'Active'",
+      whereArgs: [officerId],
+    );
+    expect(assignmentRows, isNotEmpty, reason: 'assignment must persist');
+    final assignment = assignmentRows.first;
+    expect(assignment['target_amount'], expectedTarget);
+    expect(assignment['assigned_employee_id'], officerId);
+    expect(assignment['assigned_by'], session.userId);
+    expect(assignment['status'], 'Active');
+
+    // Both cases pooled into the batch (membership history).
+    final bhRows = await db.query(
+      'case_assignment_batch_history',
+      where: "recovery_assignment_id = ? AND removed_date IS NULL",
+      whereArgs: [assignment['id']],
+    );
+    expect(bhRows, hasLength(2), reason: 'both cases pooled');
+    expect(bhRows.map((r) => r['case_id']).toSet(), {case1Id, case2Id});
+
+    // Audit trail for assignment.create.
+    final auditRows = await db.query(
+      'audit_logs',
+      where: "action = 'assignment.create' AND entity_id = ?",
+      whereArgs: [assignment['id']],
+    );
+    expect(auditRows, isNotEmpty, reason: 'assignment.create must be audited');
+
+    // Reload via provider: detail loads + computed values.
+    final assignmentId = assignment['id'] as String;
+    await recProv.loadRecoveryAssignment(assignmentId);
+    expect(recProv.currentAssignment, isNotNull);
+    expect(recProv.currentAssignmentCases, hasLength(2));
+    expect(
+      recProv.currentAssignmentRecoveredAmount,
+      0.0,
+      reason: 'no verified payments until Phase 5',
+    );
+
+    // Open cases are in-progress → time-to-recovery is now − added_date.
+    final ttr = recProv.timeToRecoveryForCase(case1Id);
+    expect(ttr, isNotNull);
+    expect(ttr!.inSeconds, greaterThanOrEqualTo(0));
+
+    // Row-scope: officer sees only their own batch.
+    final officerAssignments =
+        await recoveryAssignmentRepo.getByEmployee(officerId);
+    expect(officerAssignments, hasLength(1));
+
+    // Active-batch guard: reusing case1 in a 2nd active batch is rejected.
+    expect(
+      () => recProv.createRecoveryAssignment(
+        assignedEmployeeId: officerId,
+        assignedBy: session.userId,
+        targetAmount: 1000.0,
+        startDate: DateTime.now(),
+        deadlineDate: deadline,
+        notes: 'should be rejected',
+        caseIds: [case1Id],
+      ),
+      throwsA(isA<Exception>()),
+      reason: 'case already in an active batch — must be rejected',
+    );
 
     await dbHelper.close();
   });

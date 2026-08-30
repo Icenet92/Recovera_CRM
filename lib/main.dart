@@ -18,6 +18,7 @@ import 'providers/crm_provider.dart';
 
 import 'repositories/debtor_repository.dart';
 import 'repositories/case_repository.dart';
+import 'repositories/recovery_assignment_repository.dart';
 import 'providers/recovery_provider.dart';
 
 import 'screens/login_screen.dart';
@@ -38,6 +39,7 @@ void main() async {
   final crmActivityRepo = CrmActivityRepository(dbHelper);
   final debtorRepo = DebtorRepository(dbHelper);
   final caseRepo = CaseRepository(dbHelper);
+  final recoveryAssignmentRepo = RecoveryAssignmentRepository(dbHelper);
 
   final authRepo = AuthRepository(
     userRepo,
@@ -49,6 +51,7 @@ void main() async {
       crmActivityRepo,
       debtorRepo,
       caseRepo,
+      recoveryAssignmentRepo,
     ],
   );
 
@@ -73,7 +76,8 @@ void main() async {
               CrmProvider(orgRepo, contactRepo, leadRepo, crmActivityRepo),
         ),
         ChangeNotifierProvider(
-          create: (_) => RecoveryProvider(caseRepo, debtorRepo),
+          create: (_) =>
+              RecoveryProvider(caseRepo, debtorRepo, recoveryAssignmentRepo),
         ),
       ],
       child: const RecoveraApp(),

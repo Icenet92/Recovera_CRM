@@ -133,6 +133,11 @@ Future<void> seedAll(Database db) async {
         'name': 'View Sensitive Debtor Info',
         'category': 'debtors',
       },
+      // Phase 3B — Recovery Assignments (Case Pools)
+      {'code': 'assignment.view', 'name': 'View Assignment', 'category': 'assignments'},
+      {'code': 'assignment.create', 'name': 'Create Assignment', 'category': 'assignments'},
+      {'code': 'assignment.edit', 'name': 'Edit Assignment', 'category': 'assignments'},
+      {'code': 'assignment.delete', 'name': 'Delete Assignment', 'category': 'assignments'},
     ];
 
     final permIds = <String, String>{};
@@ -179,6 +184,7 @@ Future<void> seedAll(Database db) async {
       'payment.verify',
       'crm.view',
       'debtor.view',
+      'assignment.view',
     ]);
     assignPerms(managerId, [
       'kpi.view',
@@ -202,6 +208,9 @@ Future<void> seedAll(Database db) async {
       'debtor.view',
       'debtor.edit',
       'debtor.sensitive',
+      'assignment.view',
+      'assignment.create',
+      'assignment.edit',
     ]);
     assignPerms(caseManagerId, [
       'case.create',
@@ -220,6 +229,9 @@ Future<void> seedAll(Database db) async {
       'debtor.view',
       'debtor.edit',
       'debtor.sensitive',
+      'assignment.view',
+      'assignment.create',
+      'assignment.edit',
     ]);
     assignPerms(recoveryOfficerId, [
       'case.edit',
@@ -231,6 +243,7 @@ Future<void> seedAll(Database db) async {
       'crm.view',
       'debtor.view',
       'debtor.edit',
+      'assignment.view',
     ]);
     assignPerms(bdoId, [
       'case.create',
@@ -274,6 +287,28 @@ Future<void> seedAll(Database db) async {
       'password_hash': hash,
       'password_salt': salt,
       'role_id': superAdminId,
+      'is_active': 1,
+      'SyncCreatedAt': now,
+      'SyncUpdatedAt': now,
+      'IsDeleted': 0,
+      'DeletedAt': null,
+    });
+
+    // TEST/SEED DATA ONLY — do NOT ship as a real account.
+    // A Recovery Officer used by the Phase 3B tests and the demo Create-flow
+    // picker. `assigned_employee_id` holds a user id (see model/repo docs), so
+    // this user stands in for an "assignable officer". Remove before any
+    // client-facing deployment.
+    final officerSalt = AuthService.generateSalt();
+    final officerHash = AuthService.hashPassword('Agent@1234', officerSalt);
+    final recoveryOfficerUserId = uuid.v4();
+    await txn.insert('users', {
+      'id': recoveryOfficerUserId,
+      'username': 'sam.mugisha',
+      'password_hash': officerHash,
+      'password_salt': officerSalt,
+      'employee_id': null,
+      'role_id': recoveryOfficerId,
       'is_active': 1,
       'SyncCreatedAt': now,
       'SyncUpdatedAt': now,
