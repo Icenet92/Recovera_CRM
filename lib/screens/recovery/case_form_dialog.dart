@@ -496,6 +496,12 @@ class _CaseFormDialogState extends State<CaseFormDialog> {
                                 const SizedBox(height: 4),
                                 DropdownButtonFormField<String>(
                                   initialValue: _priority,
+                                  // isExpanded forces the trigger to fill the
+                                  // narrow Expanded column; the menu overlays
+                                  // instead of stretching the column to the
+                                  // widest item (e.g. 'Critical'), which would
+                                  // overflow the row on compact widths.
+                                  isExpanded: true,
                                   decoration: const InputDecoration(
                                     contentPadding: EdgeInsets.symmetric(
                                       horizontal: 14,
@@ -537,6 +543,12 @@ class _CaseFormDialogState extends State<CaseFormDialog> {
                                 const SizedBox(height: 4),
                                 DropdownButtonFormField<String>(
                                   initialValue: _difficulty,
+                                  // isExpanded forces the trigger to fill the
+                                  // narrow Expanded column; the menu overlays
+                                  // instead of stretching the column to the
+                                  // widest item (e.g. 'Very Difficult'), which
+                                  // previously overflowed the row by 19px.
+                                  isExpanded: true,
                                   decoration: const InputDecoration(
                                     contentPadding: EdgeInsets.symmetric(
                                       horizontal: 14,

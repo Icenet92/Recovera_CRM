@@ -143,22 +143,31 @@ class _DebtorFormDialogState extends State<DebtorFormDialog> {
     return Dialog(
       child: Container(
         width: 500,
+        height: 600,
         padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                widget.existing == null ? 'New Debtor' : 'Edit Debtor',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textHead,
-                ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              widget.existing == null ? 'New Debtor' : 'Edit Debtor',
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textHead,
               ),
-              const SizedBox(height: 24),
+            ),
+            const SizedBox(height: 24),
+            // The form can be taller than the dialog on small viewports, so the
+            // fields scroll inside an Expanded box while the Cancel/Save buttons
+            // remain pinned to the bottom (mirrors CaseFormDialog).
+            Expanded(
+              child: SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
 
               // ── Client selector (only when not pre-assigned) ─────────────────
               if (showClientPicker) ...[
@@ -241,6 +250,10 @@ class _DebtorFormDialogState extends State<DebtorFormDialog> {
                         ),
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
+                          // isExpanded forces the trigger to fill the narrow
+                          // Expanded(flex: 1) column instead of stretching to the
+                          // widest item, which overflowed the row by ~28px.
+                          isExpanded: true,
                           initialValue: _type,
                           decoration: const InputDecoration(
                             contentPadding: EdgeInsets.symmetric(
@@ -366,6 +379,11 @@ class _DebtorFormDialogState extends State<DebtorFormDialog> {
                 ),
               ),
               const SizedBox(height: 32),
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -392,8 +410,7 @@ class _DebtorFormDialogState extends State<DebtorFormDialog> {
                   ),
                 ],
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );

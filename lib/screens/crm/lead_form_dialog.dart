@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../models/lead_model.dart';
-import '../../models/organization_model.dart';
 import '../../providers/crm_provider.dart';
 
 /// Dialog for creating or editing a lead.

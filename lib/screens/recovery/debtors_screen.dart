@@ -101,16 +101,25 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             child: Row(
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Debtors', style: AppTypography.pageTitle(context)),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${rec.debtors.length} debtor${rec.debtors.length == 1 ? '' : 's'} across ${crm.organizations.length} client${crm.organizations.length == 1 ? '' : 's'}',
-                      style: AppTypography.labelSmall(context),
-                    ),
-                  ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Debtors',
+                        style: AppTypography.pageTitle(context),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${rec.debtors.length} debtor${rec.debtors.length == 1 ? '' : 's'} across ${crm.organizations.length} client${crm.organizations.length == 1 ? '' : 's'}',
+                        style: AppTypography.labelSmall(context),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(width: 12),
                 if (rec.isLoading)
@@ -119,7 +128,6 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                const Spacer(),
                 // Client filter.
                 // NB: a DropdownButtonFormField with isDense:true shrink-wraps to
                 // the hint's intrinsic width while its own trigger content (hint +

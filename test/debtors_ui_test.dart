@@ -225,18 +225,12 @@ void main() {
     await tester.pump();
     await drain(tester, ms: 900);
 
-    // Diagnostic: confirm what's actually rendered before interacting.
-    // ignore: avoid_print
-    print(
-      'Diag filter dropdown count: ${find.byType(DropdownButton).evaluate().length}, '
-      'hint text: ${find.text('Filter by client').evaluate().length}, '
-      'DebtorsScreen: ${find.byType(DebtorsScreen).evaluate().length}, '
-      'New Debtor btn: ${find.widgetWithText(FilledButton, 'New Debtor').evaluate().length}',
-    );
-
     // Filter to Metro so the New-Debtor form is locked to Metro (no client
     // picker); then the first TextFormField is the NAME field.
-    final filterDropdown = find.byType(DropdownButton).first;
+    // bySubtype<DropdownButton<String>>() matches the generic instantiation;
+    // find.byType(DropdownButton) would miss it (byType uses exact
+    // runtimeType ==, which never equals the erased bare type Dropdown<dynamic>).
+    final filterDropdown = find.bySubtype<DropdownButton<String>>().first;
     await tester.tap(filterDropdown);
     await tester.pump(const Duration(milliseconds: 150));
     await tester.tap(find.text('Metro Insurance Ltd'));
@@ -253,8 +247,19 @@ void main() {
     );
     await tester.tap(find.text('Save Debtor'));
 
-    // createDebtor + follow-up loadDebtors are FFI -> drain in a real window.
-    await drain(tester, ms: 1200);
+    // createDebtor (insert + reload) and the follow-up _openNewDebtor
+    // loadDebtors are FFI-backed; under FakeAsync each statement only advances
+    // when a real-time window (runAsync) is followed by a pump, so a single
+    // drain can only progress ONE FFI op. Interleave runAsync + pump until the
+    // form is dismissed, which proves the whole insert->reload->pop chain ran.
+    for (int i = 0; i < 80; i++) {
+      await tester.runAsync(() async {
+        await Future.delayed(const Duration(milliseconds: 25));
+      });
+      await tester.pump();
+      if (find.byType(DebtorFormDialog).evaluate().isEmpty) break;
+    }
+    await tester.pumpAndSettle();
 
     expect(find.text('Metro Debtor Inc'), findsOneWidget);
     final row = find.ancestor(
@@ -282,11 +287,15 @@ void main() {
 
       // Select a CLIENT (first dropdown) -> enables the debtor dropdown + the
       // quick-create sentinel.
-      final dropdowns = find.byType(DropdownButtonFormField);
+      final dropdowns = find.bySubtype<DropdownButtonFormField<String>>();
       await tester.tap(dropdowns.first);
       await tester.pump(const Duration(milliseconds: 150));
       await tester.tap(find.text('Telco One Rwanda'));
-      await tester.pump(const Duration(milliseconds: 150));
+      // Selecting a client triggers loadDebtorsForClient (2 FFI reads). Settle
+      // them here, while the provider is still mounted, so their late
+      // notifyListeners does not fire during tearDown ("used after being
+      // disposed").
+      await drain(tester, ms: 900);
 
       // Open the DEBTOR dropdown (second dropdown) and confirm the quick-create.
       final debtorDropdown = dropdowns.at(1);
