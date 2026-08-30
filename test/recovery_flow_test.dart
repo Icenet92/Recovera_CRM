@@ -415,4 +415,77 @@ void main() {
 
     await dbHelper.close();
   });
+
+  // ── Case Detail ─────────────────────────────────────────────────────────
+  // Regression for: CaseDetailScreen showed "Debtor: Loading..." forever
+  // because loadCaseDetails fetched the case but never its debtor, so the
+  // name lookup against the (empty) global `_debtors` list never resolved.
+  test('Case Detail debtor resolves via loadCaseDetails', () async {
+    final dir = Directory.systemTemp.createTempSync('recovera_test_detail_');
+    addTearDown(() async => dir.delete(recursive: true));
+
+    final dbHelper = DatabaseHelper.withPath(dir.path);
+    final db = await dbHelper.database;
+
+    final auditRepo = AuditRepository(dbHelper);
+    final userRepo = UserRepository(dbHelper, auditRepo);
+    final orgRepo = OrganizationRepository(dbHelper, auditRepo);
+    final caseRepo = CaseRepository(dbHelper);
+    final debtorRepo = DebtorRepository(dbHelper);
+    final recoveryAssignmentRepo = RecoveryAssignmentRepository(dbHelper);
+    final authRepo = AuthRepository(
+      userRepo,
+      auditRepo,
+      additionalRepos: [
+        orgRepo,
+        caseRepo,
+        debtorRepo,
+        recoveryAssignmentRepo,
+      ],
+    );
+
+    // Logged-in super-admin session (propagated to the repos above).
+    await authRepo.login('admin', 'Admin@1234');
+
+    final recProv = RecoveryProvider(
+      caseRepo,
+      debtorRepo,
+      recoveryAssignmentRepo,
+    );
+
+    // Seeded case CASE-2026-000001 -> its debtor (Acme Trading Corp).
+    final caseRow = (await db.query(
+      'cases',
+      where: "case_number = ?",
+      whereArgs: ['CASE-2026-000001'],
+      limit: 1,
+    )).first;
+    final caseId = caseRow['id'] as String;
+    final debtorId = caseRow['debtor_id'] as String;
+    final debtorRow = (await db.query(
+      'debtors',
+      where: "id = ?",
+      whereArgs: [debtorId],
+      limit: 1,
+    )).first;
+
+    // Simulate landing on Case Detail from a client's Cases tab: the global
+    // debtors list was never loaded.
+    expect(recProv.debtors, isEmpty, reason: 'debtors start empty');
+
+    await recProv.loadCaseDetails(caseId);
+
+    // The fix: loadCaseDetails must pull the case's debtor into `_debtors` so
+    // CaseDetailScreen's `recProv.debtors.where((d)=>d.id==c.debtorId).firstOrNull`
+    // resolves instead of falling back to 'Loading...'.
+    final resolved = recProv.debtors.where((d) => d.id == debtorId);
+    expect(resolved, hasLength(1), reason: 'case debtor must resolve');
+    expect(resolved.first.name, debtorRow['name'] as String);
+    expect(resolved.first.id, debtorId);
+
+    expect(recProv.currentCase, isNotNull);
+    expect(recProv.caseDetailsLoaded, isTrue);
+
+    await dbHelper.close();
+  });
 }

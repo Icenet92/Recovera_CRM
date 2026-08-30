@@ -286,6 +286,23 @@ class RecoveryProvider extends ChangeNotifier {
       _assignments = await _caseRepo.getAssignments(caseId);
       _statusHistory = await _caseRepo.getStatusHistory(caseId);
       _supportingEmployees = await _caseRepo.getSupportingEmployees(caseId);
+
+      // Best-effort: resolve the case's debtor so CaseDetailScreen's
+      // "Debtor: <name>" line resolves even when the global debtors list was
+      // never loaded (e.g. opened straight from a client's Cases tab). This was
+      // the bug: loadCaseDetails fetched the case but never the debtor, so the
+      // name lookup against the empty `_debtors` list was permanently stuck on
+      // "Loading...". Non-fatal — a lookup failure leaves the placeholder
+      // rather than masking the case fetch above.
+      final debtorId = _currentCase?.debtorId;
+      if (debtorId != null && !_debtors.any((d) => d.id == debtorId)) {
+        try {
+          final debtor = await _debtorRepo.getById(debtorId);
+          if (debtor != null) _debtors = [..._debtors, debtor];
+        } catch (_) {
+          // ignore — the screen degrades to 'Loading...' if unresolved.
+        }
+      }
     } catch (e) {
       _error = e.toString();
     } finally {
